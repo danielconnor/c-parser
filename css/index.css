@@ -1,0 +1,23 @@
+body {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+.tree > .list {
+  display: none;
+  list-style: none;
+  border-left: 1px solid black;
+}
+.tree.open > .list {
+  display: block;
+}
+.tree .expandable.title {
+  cursor: pointer;
+}
+
+.tree .title .name {
+  color: #881391;
+}
+.tree .literal .title .value {
+  color: #C41A16;
+}

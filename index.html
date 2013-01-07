@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+  <title>AST</title>
+
+  <link rel="stylesheet" href="css/index.css">
+
+  <script src="js/util.js"></script>
+  <script src="js/EventEmitter.js"></script>
+  <script src="js/DOMElement.js"></script>
+
+  <script src="js/UI.js"></script>
+  <script src="js/UI.Control.js"></script>
+  <script src="js/UI.TreeItem.js"></script>
+  <script src="js/UI.Literal.js"></script>
+  <script src="js/UI.TreeTitle.js"></script>
+  <script src="js/UI.TreeList.js"></script>
+  <script src="js/UI.Tree.js"></script>
+</head>
+<body>
+
+  <script src="ast.js"></script>
+
+  <script>
+    var tree = new UI.Tree("ast", ast);
+
+    document.body.appendChild(tree.element);
+  </script>
+
+</body>
+</html>
