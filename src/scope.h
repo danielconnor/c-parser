@@ -28,13 +28,13 @@ public:
 
 class GlobalScope : public Scope {
 
-  map<string, Ast::Function *> functions;
+  map<string, Ast::FunctionPrototype *> functions;
 
 public:
   GlobalScope();
 
-  void declareFunc(string, Ast::Function *);
-  Ast::Function *lookupFunc(string);
+  void declareFunc(string, Ast::FunctionPrototype *);
+  Ast::FunctionPrototype *lookupFunc(string);
 };
 
 #endif

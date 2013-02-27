@@ -1,6 +1,7 @@
 #ifndef AST_
 #define AST_
 
+
 #include <vector>
 #include <string>
 #include <iostream>
@@ -136,14 +137,19 @@ public:
       printEnd(out);
     }
 
+    void printVar(ostream &out, string var)
+    {
+      out << "var " << var << " = ";
+      print(out);
+      out << ";";
+    }
+
     void printVar(const char *filename, string var)
     {
       ofstream out;
       out.open(filename);
 
-      out << "var " << var << " = ";
-      print(out);
-      out << ";";
+      printVar(out, var);
 
       out.close();
     }
@@ -181,21 +187,20 @@ public:
     }
 
     virtual void printType(ostream &out, int indentation) {}
-
   };
 
 
   class Type : public Printable {
 
-    short unsigned type;
-
   public:
-
+    unsigned size;
+    short unsigned type;
     const static char *types[];
 
-    Type(short unsigned type)
+    Type(short unsigned type, unsigned int size = 1)
     {
       this->type = type;
+      this->size = size;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -299,7 +304,8 @@ public:
     virtual void printContents(ostream &out, int i)
     {
       printMember(out, "raw", raw, i);
-      printMember(out, "value", value.intVal, i);
+      printMember(out, "intVal", value.intVal, i);
+      printMember(out, "doubleVal", value.doubleVal, i);
     }
   };
 
@@ -465,10 +471,10 @@ public:
 
   class Argument : public Node
   {
+  public:
     Type *type;
     string name;
 
-  public:
     Argument(Type *type, string name)
     {
       this->type = type;
@@ -733,41 +739,32 @@ public:
     }
   };
 
-  class Function : public Statement {
+  class FunctionPrototype : public Statement {
   public:
     Type *returnType;
     string name;
     List<Argument *> *arguments;
-    BlockStatement *body;
 
-    Function(
+    FunctionPrototype(
         Type *returnType,
         string name,
-        List<Argument *> *arguments,
-        BlockStatement *body
+        List<Argument *> *arguments
       )
     {
       this->returnType = returnType;
       this->name = name;
       this->arguments = arguments;
-      this->body = body;
     }
-    ~Function()
+    ~FunctionPrototype()
     {
       arguments->clear();
       delete returnType;
       delete arguments;
-      delete body;
     }
 
     virtual string getTypeString()
     {
-      return "Function";
-    }
-
-    bool isPrototype()
-    {
-      return body == NULL;
+      return "FunctionPrototype";
     }
 
     void printContents(ostream &out, int i)
@@ -775,6 +772,35 @@ public:
       printMember(out, "returnType", returnType, i);
       printMember(out, "name", name, i);
       printMember(out, "arguments", arguments, i);
+    }
+  };
+
+  class FunctionDeclaration : public Statement {
+  public:
+    FunctionPrototype *prototype;
+    BlockStatement *body;
+
+    FunctionDeclaration(
+        FunctionPrototype *prototype,
+        BlockStatement *body
+      )
+    {
+      this->prototype = prototype;
+      this->body = body;
+    }
+    ~FunctionDeclaration()
+    {
+      delete body;
+    }
+
+    virtual string getTypeString()
+    {
+      return "FunctionDeclaration";
+    }
+
+    void printContents(ostream &out, int i)
+    {
+      printMember(out, "prototype", prototype, i);
       printMember(out, "body", body, i);
     }
 
@@ -782,10 +808,10 @@ public:
 
   class FunctionInvocation : public Expression
   {
-    Function *function;
+    FunctionPrototype *function;
     List<Expression *> *arguments;
   public:
-    FunctionInvocation(Function *function, List<Expression *> *arguments)
+    FunctionInvocation(FunctionPrototype *function, List<Expression *> *arguments)
     {
       this->arguments = arguments;
       this->function = function;
@@ -837,6 +863,29 @@ public:
     {
       printMember(out, "object", object, i);
       printMember(out, "member", member, i);
+    }
+  };
+
+  class ArrayAccess : public Assignable
+  {
+    Expression *array;
+    Expression *index;
+
+  public:
+    ArrayAccess(Expression *array, Expression *index)
+    {
+      this->array = array;
+      this->index = index;
+    }
+    ~ArrayAccess()
+    {
+      delete array;
+      delete index;
+    }
+
+    virtual string getTypeString()
+    {
+      return "ArrayAccess";
     }
   };
 

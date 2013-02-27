@@ -5,7 +5,6 @@
   ((void)0
 
 
-
 Parser::Parser(const char* filename)
 {
   scanner = new Scanner(filename);
@@ -236,7 +235,7 @@ Ast::Expression *Parser::parseExpression(bool* error)
 }
 
 /**
-* Parse an expression, aloowing only operators greater than
+* Parse an expression, allowing only operators greater than
 * a certain precedence to allow us to parse things like function
 * invocation expressions which are seperated by commas.
 */
@@ -245,16 +244,13 @@ Ast::Expression *Parser::parseExpression(int prec, bool* error)
   Ast::Expression *result;
   Ast::Expression *expr;
 
-  cout << "1\n";
   getOperand(CHECK_ERROR);
-  cout << "2\n";
 
   if(Token::IsAssignmentOp(peek()) && !Token::IsUpdateOp(peek()))
   {
     Token::Value assign_op = next();
     Ast::Assignable *operand = (Ast::Assignable *)operands->top();
     operands->pop();
-    cout << "whazza\n";
     expr = parseExpression(CHECK_ERROR);
     result = new Ast::AssignExpression(assign_op, operand, expr);
   }
@@ -264,11 +260,9 @@ Ast::Expression *Parser::parseExpression(int prec, bool* error)
         Token::IsCompareOp(tok)) && Token::Precedence(tok) >= prec;
       tok = peek())
     {
-      cout << "here\n";
       pushOperator(tok);
       next();
       getOperand(CHECK_ERROR);
-      cout << "not here\n";
     }
     while(operators->top() != SENTINEL)
     {
@@ -379,8 +373,6 @@ void Parser::popOperator()
 {
   Token::Value tok = operators->top();
   operators->pop();
-
-  cout << Token::String(tok) << "\n";
 
   if(Token::IsBinaryOp(tok) || Token::IsCompareOp(tok))
   {
@@ -504,105 +496,140 @@ Ast::Statement *Parser::parseStatement(bool *error)
     }
   }
 
-  if(*error) {
-    // *error = false;
-  }
-
   return statement;
 }
 
 /**
-* We call function declarations Functions because
-* all function overloads are under the same name, but have different
-* attributes.
+*
 */
-Ast::Function *Parser::parseFunctionDecl(unsigned short type, bool* error)
+Ast::Statement *Parser::parseFunctionDecl(unsigned short type, bool* error)
 {
   string name = scanner->currentVal();
-  Ast::List<Ast::Argument *> *arguments = NULL;
+  Ast::FunctionPrototype *proto = global->lookupFunc(name);
+  Ast::List<Ast::Argument *> *arguments = proto ? proto->arguments : NULL;
   Ast::BlockStatement *body = NULL;
-  Ast::Type *returnType = new Ast::Type(type);
+  Ast::Type *returnType = proto ? proto->returnType : new Ast::Type(type);
 
   expect(Token::LPAREN, CHECK_ERROR);
-  arguments = parseArgumentList(CHECK_ERROR);
+  arguments = parseArgumentList(arguments, CHECK_ERROR);
   expect(Token::RPAREN, CHECK_ERROR);
 
-
-  Ast::Function *definition = global->lookupFunc(name);
+  if(!proto)
+  {
+    proto = new Ast::FunctionPrototype(
+        returnType,
+        name,
+        arguments
+      );
+    global->declareFunc(name, proto);
+  }
 
   // check if it's a prototype or definition.
   if(peek() == Token::LBRACE)
   {
     openScope();
-    // TODO: declare all the arguments in the current scope.
-    // We don't know if we're dealing with a prototype or definition
-    // above, so now that we know, define the function arguments
-    // in the new scope.
+
+    // we must define each of the arguments in the current
+    // scope
+    for(Ast::List<Ast::Argument *>::iterator it = arguments->begin(); it != arguments->end(); ++it)
+    {
+      scope->declareVar((*it)->name, (*it)->type);
+    }
+
     body = parseBlock(false, CHECK_ERROR);
+
+    return new Ast::FunctionDeclaration(
+      proto,
+      body
+    );
   }
   else {
     expect(Token::SEMICOLON, CHECK_ERROR);
+    return proto;
   }
 
-  if(definition)
-  {
-    if(definition->isPrototype() && body)
-    {
-      definition->body = body;
-    }
-    else if(body)
-    {
-      cout << "function has been defined already\n";
-    }
-  }
-  else {
-    definition = new Ast::Function(
-      returnType,
-      name,
-      arguments,
-      body
-    );
-    global->declareFunc(name, definition);
-  }
-
-
-  return definition;
 }
 
-Ast::Argument *Parser::parseArgument(bool *error)
+Ast::Argument *Parser::parseArgument(Ast::Argument *argument, bool *error)
 {
-
   unsigned short type = parseType(CHECK_ERROR);
-  expect(Token::IDENTIFIER, CHECK_ERROR);
-  string name = scanner->currentVal();
+  string name = "";
 
-  return new Ast::Argument(
-      new Ast::Type(type),
-      name
-    );
+  if(peek() == Token::IDENTIFIER)
+  {
+    expect(Token::IDENTIFIER, CHECK_ERROR);
+    name = scanner->currentVal();
+  }
+
+  if(argument)
+  {
+    if(argument->type->type != type)
+    {
+      cout << "type mismatch\n";
+      *error = true;
+    }
+    else
+    {
+      argument->name = name;
+    }
+  }
+  else
+  {
+    argument = new Ast::Argument(
+        new Ast::Type(type),
+        name
+      );
+  }
+
+  return argument;
+}
+
+Ast::List<Ast::Argument *> *Parser::parseArgumentList(Ast::List<Ast::Argument *> *arguments, bool* error)
+{
+  if(!arguments) return parseArgumentList(CHECK_ERROR);
+  Ast::List<Ast::Argument *>::iterator it = arguments->begin();
+
+  if(peek() != Token::RPAREN)
+  {
+    if(it <= arguments->end()) {
+      parseArgument(*it++, CHECK_ERROR);
+
+      while(peek() == Token::COMMA && it < arguments->end())
+      {
+        expect(Token::COMMA, CHECK_ERROR);
+        parseArgument(*it, CHECK_ERROR);
+        it++;
+      }
+    }
+    else {
+      *error = true;
+      cout << "type mismatch\n";
+    }
+  }
+
+  return arguments;
 }
 
 Ast::List<Ast::Argument *> *Parser::parseArgumentList(bool* error)
 {
-
   Ast::List<Ast::Argument *> *arguments = new Ast::List<Ast::Argument *>();
+
   if(peek() != Token::RPAREN)
   {
-
-    Ast::Argument *argument = parseArgument(CHECK_ERROR);
+    Ast::Argument *argument = parseArgument(NULL, CHECK_ERROR);
     arguments->push_back(argument);
 
     while(peek() == Token::COMMA)
     {
       expect(Token::COMMA, CHECK_ERROR);
-      argument = parseArgument(CHECK_ERROR);
+      argument = parseArgument(NULL, CHECK_ERROR);
       arguments->push_back(argument);
     }
-
   }
 
   return arguments;
 }
+
 
 Ast::FunctionInvocation *Parser::parseFunctionInvocation(bool *error)
 {
@@ -626,11 +653,20 @@ Ast::FunctionInvocation *Parser::parseFunctionInvocation(bool *error)
     }
   }
 
-  Ast::Function *function = global->lookupFunc(name);
+  Ast::FunctionPrototype *function = global->lookupFunc(name);
 
-  if(!function) {
+  if(!function)
+  {
     cout << "this function has not been declared: " << name << "\n";
   }
+  else
+  {
+    if(function->arguments->size() != arguments->size())
+    {
+      cout << "wrong number of arguments\n";
+    }
+  }
+
 
   expect(Token::RPAREN, CHECK_ERROR);
 

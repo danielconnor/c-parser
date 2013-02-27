@@ -216,8 +216,9 @@ Token::Value Scanner::scan()
   }
 
   // the parser doesn't need comments
-  // so we get he next character
+  // so we get the next character
   if(token == Token::COMMENT) {
+    swapBuffers();
     return scan();
   }
 
@@ -341,7 +342,7 @@ Token::Value Scanner::scanNumber()
 
   if(current == '.')
   {
-    double offset = 1;
+    double offset = 10;
     double mantissa = 0;
 
     _next->push(current);
@@ -352,10 +353,12 @@ Token::Value Scanner::scanNumber()
       _next->push(current);
 
       mantissa += (current - '0') / offset;
-
+      offset += 10;
       next();
     }
 
+    cout << "value: " << value << "\n";
+    cout << "mantissa: " << mantissa << "\n";
     _next->numberValue.doubleVal = value + mantissa;
   }
 

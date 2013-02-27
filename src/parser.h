@@ -37,15 +37,21 @@ public:
   void openScope();
   void closeScope();
 
-  Ast::List<Ast::Statement *> *parse();
+  void *getOperand(bool*);
+  void popOperator();
+  void pushOperator(Token::Value);
 
   void syncStatement();
 
+  Ast::List<Ast::Statement *> *parse();
+
   unsigned short parseType(bool*);
   Ast::Statement *parseFuncOrVar(bool*);
-  Ast::Function *parseFunctionDecl(unsigned short, bool*);
-  Ast::Argument *parseArgument(bool *);
+  Ast::Statement *parseFunctionDecl(unsigned short, bool*);
+  Ast::Argument *parseArgument(Ast::Argument *, bool *);
   Ast::List<Ast::Argument *> *parseArgumentList(bool*);
+  Ast::List<Ast::Argument *> *parseArgumentList(Ast::List<Ast::Argument *> *, bool*);
+
   Ast::Declaration *parseVariableDeclList(unsigned short, bool*);
   Ast::Declarator *parseVariableDecl(bool, unsigned short, bool*);
   Ast::FunctionInvocation *parseFunctionInvocation(bool*);
@@ -58,9 +64,6 @@ public:
 
   Ast::Expression *parseExpression(int prec, bool*);
   Ast::Expression *parseExpression(bool*);
-  void *getOperand(bool*);
-  void popOperator();
-  void pushOperator(Token::Value);
   Ast::ExpressionStatement *parseExpressionStatement(bool*);
 
   Ast::IfStatement *parseIf(bool*);

@@ -48,14 +48,14 @@ GlobalScope::GlobalScope() : Scope(NULL)
 {
 }
 
-void GlobalScope::declareFunc(string name, Ast::Function *func)
+void GlobalScope::declareFunc(string name, Ast::FunctionPrototype *func)
 {
   functions[name] = func;
 }
 
-Ast::Function *GlobalScope::lookupFunc(string name)
+Ast::FunctionPrototype *GlobalScope::lookupFunc(string name)
 {
-  Ast::Function *func = functions[name];
+  Ast::FunctionPrototype *func = functions[name];
 
   return functions[name];
 }

@@ -5,7 +5,7 @@ UI.TreeList = (function() {
 
     if(obj && typeof obj === "object") {
 
-      var keys = Object.keys(obj).sort();
+      var keys = Object.keys(obj);
 
       for(var i = 0, il = keys.length; i < il; i++) {
 
