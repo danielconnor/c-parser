@@ -44,8 +44,6 @@ const option::Descriptor usage[] =
  {0,0,0,0,0,0}
 };
 
-
-
 int main(int argc, char* argv[])
 {
   argc -=(argc > 0); argv += (argc > 0); // skip program name argv[0] if present
@@ -72,19 +70,18 @@ int main(int argc, char* argv[])
   }
 
   Parser p(options[INPUT].arg);
+  Ast::List<Ast::Statement *> ast;
 
-  Ast::List<Ast::Statement *> *ast = p.parse();
+  p.parse(&ast);
 
   if(options[OUTPUT])
   {
-    ast->printVar(options[OUTPUT].arg, "ast");
+    ast.printVar(options[OUTPUT].arg, "ast");
   }
   else
   {
-    ast->printVar(cout, "ast");
+    ast.printVar(cout, "ast");
   }
-
-  delete ast;
 
   return 0;
 }

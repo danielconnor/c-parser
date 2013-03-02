@@ -43,7 +43,7 @@ public:
 
   void syncStatement();
 
-  Ast::List<Ast::Statement *> *parse();
+  void parse(Ast::List<Ast::Statement *> *);
 
   unsigned short parseType(bool*);
   Ast::Statement *parseFuncOrVar(bool*);

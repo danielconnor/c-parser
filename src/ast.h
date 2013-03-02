@@ -24,6 +24,19 @@ public:
   public:
     int c;
 
+    static unsigned long ref_count;
+
+    Printable()
+    {
+      ref_count++;
+      cout << "printable: " << ref_count << "\n";
+    }
+    virtual ~Printable()
+    {
+      ref_count--;
+      cout << "printable: " << ref_count << "\n";
+    }
+
     void indent(ostream &out, int indentation)
     {
       for(int i = 0; i < indentation; i++)
@@ -155,7 +168,6 @@ public:
     }
   };
 
-
   template <typename T> class List : public vector<T>, public Printable {
   public:
     void printStart(ostream &out)
@@ -187,6 +199,15 @@ public:
     }
 
     virtual void printType(ostream &out, int indentation) {}
+
+    virtual ~List()
+    {
+      for(int i = 0; i < this->size(); i++)
+      {
+        delete this->at(i);
+      }
+      this->clear();
+    }
   };
 
 
@@ -324,9 +345,14 @@ public:
       this->name = name;
       this->type = type;
     }
-    ~Variable()
+    virtual ~Variable()
     {
-      delete type;
+      // Because types are stored in the scope
+      // and re-used for each of the declarators
+      // they cannot be deleted by the variable
+      // so they must be deleted in the declarator
+      // where it was created.
+      // delete type;
     }
 
     virtual string getTypeString()
@@ -368,7 +394,7 @@ public:
       this->left = left;
       this->right = right;
     }
-    ~AssignExpression()
+    virtual ~AssignExpression()
     {
       delete left;
       delete right;
@@ -397,7 +423,7 @@ public:
       this->operand = operand;
     }
 
-    ~UnaryExpression()
+    virtual ~UnaryExpression()
     {
       delete operand;
     }
@@ -450,7 +476,7 @@ public:
       this->right = right;
     }
 
-    ~BinaryExpression()
+    virtual ~BinaryExpression()
     {
       delete left;
       delete right;
@@ -481,6 +507,11 @@ public:
       this->name = name;
     }
 
+    virtual ~Argument()
+    {
+      delete type;
+    }
+
     string getTypeString()
     {
       return "Argument";
@@ -509,7 +540,7 @@ public:
       this->body = body;
     }
 
-    ~CtrlStatement()
+    virtual ~CtrlStatement()
     {
       delete condition;
       delete body;
@@ -540,7 +571,7 @@ public:
       this->init = init;
       this->loop = loop;
     }
-    ~ForStatement()
+    virtual ~ForStatement()
     {
       delete init;
       delete loop;
@@ -588,7 +619,7 @@ public:
     {
       this->elseBody = elseBody;
     }
-    ~IfStatement()
+    virtual ~IfStatement()
     {
       delete elseBody;
     }
@@ -617,7 +648,7 @@ public:
       this->name = name;
       this->init = init;
     }
-    ~Declarator()
+    virtual ~Declarator()
     {
       delete init;
     }
@@ -645,9 +676,8 @@ public:
       this->type = type;
       this->declarations = declarations;
     }
-    ~Declaration()
+    virtual ~Declaration()
     {
-      declarations->clear();
       delete type;
       delete declarations;
     }
@@ -673,8 +703,7 @@ public:
     {
       this->statements = statements;
     }
-    ~BlockStatement() {
-      statements->clear();
+    virtual ~BlockStatement() {
       delete statements;
     }
 
@@ -698,7 +727,7 @@ public:
     {
       this->expression = expression;
     }
-    ~ExpressionStatement()
+    virtual ~ExpressionStatement()
     {
       delete expression;
     }
@@ -723,7 +752,7 @@ public:
     {
       this->expression = expression;
     }
-    ~ReturnStatement()
+    virtual ~ReturnStatement()
     {
       delete expression;
     }
@@ -755,9 +784,8 @@ public:
       this->name = name;
       this->arguments = arguments;
     }
-    ~FunctionPrototype()
+    virtual ~FunctionPrototype()
     {
-      arguments->clear();
       delete returnType;
       delete arguments;
     }
@@ -788,8 +816,9 @@ public:
       this->prototype = prototype;
       this->body = body;
     }
-    ~FunctionDeclaration()
+    virtual ~FunctionDeclaration()
     {
+      delete prototype;
       delete body;
     }
 
@@ -816,9 +845,8 @@ public:
       this->arguments = arguments;
       this->function = function;
     }
-    ~FunctionInvocation()
+    virtual ~FunctionInvocation()
     {
-      arguments->clear();
       delete function;
       delete arguments;
     }
@@ -849,7 +877,7 @@ public:
       this->object = object;
       this->member = member;
     }
-    ~MemberExpression()
+    virtual ~MemberExpression()
     {
       delete object;
     }
@@ -877,7 +905,7 @@ public:
       this->array = array;
       this->index = index;
     }
-    ~ArrayAccess()
+    virtual ~ArrayAccess()
     {
       delete array;
       delete index;
@@ -900,9 +928,8 @@ public:
       this->name = name;
       this->members = members;
     }
-    ~StructStatement()
+    virtual ~StructStatement()
     {
-      members->clear();
       delete members;
     }
 
@@ -966,7 +993,7 @@ public:
     {
       this->variable = variable;
     }
-    ~SwitchStatement()
+    virtual ~SwitchStatement()
     {
       delete variable;
     }

@@ -75,10 +75,9 @@ void Parser::closeScope()
 }
 
 // start parsing from the global scope
-Ast::List<Ast::Statement *> *Parser::parse()
+void Parser::parse(Ast::List<Ast::Statement *> *statements)
 {
   // a program is just a list of statements
-  Ast::List<Ast::Statement *> *statements = new Ast::List<Ast::Statement *>();
   Ast::Statement* statement;
   bool error = false;
 
@@ -89,8 +88,6 @@ Ast::List<Ast::Statement *> *Parser::parse()
       statements->push_back(statement);
     }
   }
-
-  return statements;
 }
 
 // used for finding our way back to a valid
