@@ -8,6 +8,8 @@
 #include <fstream>
 #include <ostream>
 
+#include <stdint.h>
+
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
@@ -17,6 +19,9 @@
 #include "token.h"
 
 using namespace std;
+
+static llvm::Module *TheModule;
+static llvm::IRBuilder<> Builder(llvm::getGlobalContext());
 
 class Ast {
 
@@ -30,7 +35,7 @@ public:
   public:
     int c;
 
-    static unsigned long ref_count;
+    static uint32_t ref_count;
 
     Printable()
     {
@@ -187,7 +192,7 @@ public:
 
     virtual void printContents(ostream &out, int indentation)
     {
-      for(int i = 0; i < this->size(); i++)
+      for(vector<T>::size_type i = 0; i < this->size(); i++)
       {
         if(c)
         {
@@ -208,7 +213,7 @@ public:
 
     virtual ~List()
     {
-      for(int i = 0; i < this->size(); i++)
+      for(vector<T>::size_type i = 0; i < this->size(); i++)
       {
         delete this->at(i);
       }
@@ -272,6 +277,8 @@ public:
 
   class Node : public Printable
   {
+    virtual llvm::Value *Codegen() = 0;
+
   //   Position start;
   //   Position end;
 
@@ -346,7 +353,7 @@ public:
     string name;
     Type *type;
 
-    Variable(string name, Type *type)
+    Variable(string name, Type *type): name(name), type(type)
     {
       this->name = name;
       this->type = type;

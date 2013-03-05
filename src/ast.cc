@@ -13,4 +13,4 @@ const char *Ast::Type::types[] = {
   "char"
 };
 
-unsigned long int Ast::Printable::ref_count = 0;
+uint32_t Ast::Printable::ref_count = 0;
