@@ -1,13 +1,16 @@
 #include "parser.h"
 
-#define CHECK_ERROR  error);      \
-  if (*error) return NULL;        \
+#define CHECK_ERROR error);  \
+  if (*error) return;        \
+  ((void)0
+
+#define CHECK_ERROR_NULL  error);  \
+  if (*error) return NULL;         \
   ((void)0
 
 
-Parser::Parser(const char* filename)
+Parser::Parser(istream& input) : scanner(input)
 {
-  scanner = new Scanner(filename);
   scope = global = new GlobalScope();
   operators = new stack<Token::Value>();
   operands = new stack<Ast::Expression *>();
@@ -20,8 +23,6 @@ Parser::~Parser()
   // TODO: make sure these are empty
   //operators->clear();
   //operands->clear();
-
-  delete scanner;
   delete scope;
   // delete global;
   delete operators;
@@ -30,7 +31,7 @@ Parser::~Parser()
 
 Token::Value Parser::peek()
 {
-  return scanner->peek();
+  return scanner.peek();
 }
 
 /**
@@ -38,7 +39,7 @@ Token::Value Parser::peek()
 */
 Token::Value Parser::next()
 {
-  Token::Value tok = scanner->scan();
+  Token::Value tok = scanner.scan();
   return tok;
 }
 
@@ -52,7 +53,7 @@ void Parser::expect(Token::Value token, bool* error)
 
   if(current != token)
   {
-    cout << "unexpected token: " << Token::String(current) << "\n";
+    cerr << "line:" << scanner._current->line << " col: " << scanner._current->col << " - unexpected token: " << Token::String(current) << "\n";
     *error = true;
   }
 }
@@ -71,7 +72,7 @@ void Parser::openScope()
 */
 void Parser::closeScope()
 {
-  scope = scope->parent;
+  scope = scope->closeScope();
 }
 
 // start parsing from the global scope
@@ -131,74 +132,141 @@ void Parser::syncStatement()
 #define TYPE_MODIFIER (_SHORT_ | _LONG_ | _SIGNED_ | _UNSIGNED_)
 #define IS_BOTH(A, T1, T2) ((A) & (T1) && (A) & (T2))
 
-unsigned short Parser::parseType(bool* error)
+Ast::Type* Parser::parseType(bool consumePointer, bool* error)
 {
+  Ast::Type* type;
   Token::Value tok;
-
-  unsigned short type = 0;
+  unsigned short typeField = 0;
   unsigned short specifier = 0;
 
-  while(Token::IsTypeSpecifier(tok = peek()))
-  {
-    switch(tok)
-    {
-      case Token::SHORT:
-        specifier = _SHORT_;
-        break;
-      case Token::LONG:
-        if(type & _LONG_) {
-          specifier = _LONGLONG_;
-        }
-        else specifier = _LONG_;
-        break;
-      case Token::SIGNED:
-        specifier = _SIGNED_;
-        break;
-      case Token::UNSIGNED:
-        specifier = _UNSIGNED_;
-        break;
-      case Token::FLOAT:
-        specifier = _FLOAT_;
-        break;
-      case Token::DOUBLE:
-        specifier = _DOUBLE_;
-        break;
-      case Token::INT:
-        specifier = _INT_;
-        break;
-      case Token::CHAR:
-        specifier = _CHAR_;
-        break;
-    }
+  // Look for a type defined with typedef
+  Ast::Node* node;
 
-    if(IS_BOTH(DATA_TYPE, type, specifier))
-    {
-      cout << "two or more data types in declaration specifiers\n";
-    }
-    if(IS_BOTH(type | specifier, _SHORT_, _LONG_))
-    {
-      cout << "cannot have both long and short in declaration specifiers\n";
-    }
-    if(IS_BOTH(type | specifier, TYPE_MODIFIER, _FLOAT_))
-    {
-      cout << "cannot have both float and " << Token::String(tok) << " in declaration specifiers\n";
-    }
-    if(IS_BOTH(type | specifier, _DOUBLE_, _SHORT_)) {
-      cout << "cannot have both double and short in declaration specifiers\n";
-    }
-    if(IS_BOTH(type | specifier, _DOUBLE_, _SIGNED_)) {
-      cout << "cannot have both double and signed in declaration specifiers\n";
-    }
-    if(IS_BOTH(type | specifier, _DOUBLE_, _UNSIGNED_)) {
-      cout << "cannot have both double and unsigned in declaration specifiers\n";
-    }
-
-    // add the specifer to the type
-    type |= specifier;
-
-    next();
+  while(Token::IsStorageSpecifier(tok = peek())) {
+      // TODO: actually handle the storage specifier
+      next();
   }
+
+  while(Token::IsNonStandard(peek())) {
+    consumeNonStandard(CHECK_ERROR_NULL);
+  }
+
+  if(global->lookupIdentifier(scanner.peekVal(), node) == Ast::TYPEDEF) {
+    next();
+    type = ((Ast::Typedef*)node)->type;
+  }
+  else {
+    if(tok == Token::STRUCT) {
+      type = parseStruct(CHECK_ERROR_NULL);
+    }
+    else if(tok == Token::UNION) {
+      cerr << "union not yet implemented";
+      //type = parseUnion();
+    }
+    else {
+      while(Token::IsTypeSpecifier(tok = peek()))
+      {
+        switch(tok)
+        {
+          case Token::SHORT:
+            specifier = _SHORT_;
+            break;
+          case Token::LONG:
+            if(typeField & _LONG_) {
+              specifier = _LONGLONG_;
+            }
+            else specifier = _LONG_;
+            break;
+          case Token::SIGNED:
+            specifier = _SIGNED_;
+            break;
+          case Token::UNSIGNED:
+            specifier = _UNSIGNED_;
+            break;
+          case Token::FLOAT:
+            specifier = _FLOAT_;
+            break;
+          case Token::DOUBLE:
+            specifier = _DOUBLE_;
+            break;
+          case Token::INT:
+            specifier = _INT_;
+            break;
+          case Token::CHAR:
+            specifier = _CHAR_;
+            break;
+        }
+
+        if(IS_BOTH(DATA_TYPE, typeField, specifier))
+        {
+          cout << "two or more data types in declaration specifiers\n";
+        }
+        if(IS_BOTH(typeField | specifier, _SHORT_, _LONG_))
+        {
+          cout << "cannot have both long and short in declaration specifiers\n";
+        }
+        if(IS_BOTH(typeField | specifier, TYPE_MODIFIER, _FLOAT_))
+        {
+          cout << "cannot have both float and " << Token::String(tok) << " in declaration specifiers\n";
+        }
+        if(IS_BOTH(typeField | specifier, _DOUBLE_, _SHORT_)) {
+          cout << "cannot have both double and short in declaration specifiers\n";
+        }
+        if(IS_BOTH(typeField | specifier, _DOUBLE_, _SIGNED_)) {
+          cout << "cannot have both double and signed in declaration specifiers\n";
+        }
+        if(IS_BOTH(typeField | specifier, _DOUBLE_, _UNSIGNED_)) {
+          cout << "cannot have both double and unsigned in declaration specifiers\n";
+        }
+        // add the specifer to the type
+        typeField |= specifier;
+
+        next();
+
+        while(Token::IsNonStandard(peek())) {
+          consumeNonStandard(CHECK_ERROR_NULL);
+        }
+
+      }
+      type = new Ast::FundamentalType(typeField);
+    }
+  }
+
+  if(consumePointer) {
+    while(checkPointer())
+    {
+      type = new Ast::Pointer(type);
+    }
+  }
+
   return type;
+}
+
+
+/**
+ * Consume non-standard tokens and discard them.
+ * @param error Whether or not an error has occured.
+ */
+void Parser::consumeNonStandard(bool *error)
+{
+  switch(peek()) {
+    // add other non-standard tokens to be skipped here:
+    case Token::_INLINE:
+      next();
+      break;
+    case Token::_ATTRIBUTE:
+      next();
+      expect(Token::LPAREN, CHECK_ERROR);
+      expect(Token::LPAREN, CHECK_ERROR);
+      // just consume any constants
+      next();
+      expect(Token::RPAREN, CHECK_ERROR);
+      expect(Token::RPAREN, CHECK_ERROR);
+      break;
+    default:
+      *error = true;
+      break;
+  }
 }
 
 /**
@@ -209,15 +277,24 @@ unsigned short Parser::parseType(bool* error)
 Ast::Statement *Parser::parseFuncOrVar(bool* error)
 {
   Ast::Statement *statement;
-  int type = parseType(CHECK_ERROR);
+  Ast::Type* type = parseType(false, CHECK_ERROR_NULL);
+  Ast::Type* pointerType = type;
 
-  expect(Token::IDENTIFIER, CHECK_ERROR);
+  while(checkPointer()) {
+    pointerType = new Ast::Pointer(type);
+  }
+
+  while(Token::IsNonStandard(peek())) {
+    consumeNonStandard(CHECK_ERROR_NULL);
+  }
+
+  expect(Token::IDENTIFIER, CHECK_ERROR_NULL);
 
   if(peek() == Token::LPAREN) {
-    statement = parseFunctionDecl(type, CHECK_ERROR);
+    statement = parseFunctionDecl(pointerType, CHECK_ERROR_NULL);
   }
   else {
-    statement = parseVariableDeclList(type, CHECK_ERROR);
+    statement = parseVariableDeclList(type, pointerType, CHECK_ERROR_NULL);
   }
 
   return statement;
@@ -241,14 +318,14 @@ Ast::Expression *Parser::parseExpression(int prec, bool* error)
   Ast::Expression *result;
   Ast::Expression *expr;
 
-  getOperand(CHECK_ERROR);
+  getOperand(CHECK_ERROR_NULL);
 
   if(Token::IsAssignmentOp(peek()) && !Token::IsUpdateOp(peek()))
   {
     Token::Value assign_op = next();
     Ast::Assignable *operand = (Ast::Assignable *)operands->top();
     operands->pop();
-    expr = parseExpression(CHECK_ERROR);
+    expr = parseExpression(CHECK_ERROR_NULL);
     result = new Ast::AssignExpression(assign_op, operand, expr);
   }
   else {
@@ -259,7 +336,7 @@ Ast::Expression *Parser::parseExpression(int prec, bool* error)
     {
       pushOperator(tok);
       next();
-      getOperand(CHECK_ERROR);
+      getOperand(CHECK_ERROR_NULL);
     }
     while(operators->top() != SENTINEL)
     {
@@ -272,45 +349,37 @@ Ast::Expression *Parser::parseExpression(int prec, bool* error)
   return result;
 }
 
-void *Parser::getOperand(bool* error)
+void Parser::getOperand(bool* error)
 {
   Token::Value tok = peek();
+  Ast::Expression* expr = NULL;
+
   if(tok == Token::IDENTIFIER)
   {
     expect(Token::IDENTIFIER, CHECK_ERROR);
     if(peek() == Token::LPAREN)
     {
-      Ast::FunctionInvocation *expr = parseFunctionInvocation(CHECK_ERROR);
-      operands->push(expr);
+      expr = parseFunctionInvocation(CHECK_ERROR);
     }
     else
     {
-      string name = scanner->currentVal();
+      string name = scanner.currentVal();
 
-      Ast::Type *type = scope->lookupVar(name);
-
-      if(type)
+      Ast::Node *node;
+      Ast::NodeType nodeType = scope->lookupIdentifier(name, node);
+      if(nodeType == Ast::VARIABLE || nodeType == Ast::ARGUMENT)
       {
-        Ast::Expression *expr = new Ast::Variable(name, type);
-
-        while(peek() == Token::DOT)
-        {
-          expect(Token::DOT, CHECK_ERROR);
-          expect(Token::IDENTIFIER, CHECK_ERROR);
-          expr = new Ast::MemberExpression(expr, scanner->currentVal());
-        }
+        expr = (Ast::Variable*)node;
 
         // We need to check for a postfix operation here.
         if(Token::IsUpdateOp(peek()))
         {
           expr = new Ast::UpdateExpression(next(), expr, false);
         }
-
-        operands->push(expr);
       }
       else
       {
-        cout << "This variable is not defined in the current scope: " << name << "\n";
+        cout << scanner._current->line << ": This variable is not defined in the current scope: " << name << "\n";
         *error = true;
       }
     }
@@ -318,14 +387,13 @@ void *Parser::getOperand(bool* error)
   else if(Token::IsIdentifierOrLiteral(tok))
   {
     next();
-
     if(tok == Token::NUMBER)
     {
-      operands->push(new Ast::NumberLiteral(scanner->currentVal(), scanner->currentNumber()));
+      expr = new Ast::NumberLiteral(scanner.currentVal(), scanner.currentNumber());
     }
     else
     {
-      operands->push(new Ast::Literal(scanner->currentVal()));
+      expr = new Ast::Literal(scanner.currentVal());
     }
   }
   else if(tok == Token::LPAREN)
@@ -333,8 +401,7 @@ void *Parser::getOperand(bool* error)
     operators->push(SENTINEL);
     expect(Token::LPAREN, CHECK_ERROR);
 
-    Ast::Expression *expr = parseExpression(CHECK_ERROR);
-    operands->push(expr);
+    expr = parseExpression(CHECK_ERROR);
 
     expect(Token::RPAREN, CHECK_ERROR);
     operators->pop();
@@ -342,20 +409,14 @@ void *Parser::getOperand(bool* error)
   else if(Token::IsUnaryOp(tok))
   {
     next();
-    getOperand(CHECK_ERROR);
-    Ast::Expression *expr = operands->top();
-    operands->pop();
-
-    operands->push(new Ast::UnaryExpression(tok, expr));
+    Ast::Expression* operand = parseExpression(CHECK_ERROR);
+    expr = new Ast::UnaryExpression(tok, operand);
   }
   else if(Token::IsUpdateOp(tok))
   {
     next();
-    getOperand(CHECK_ERROR);
-    Ast::Expression *expr = operands->top();
-    operands->pop();
-
-    operands->push(new Ast::UpdateExpression(tok, expr, true));
+    Ast::Expression *operand = parseExpression(CHECK_ERROR);
+    expr = new Ast::UpdateExpression(tok, expr, true);
   }
   else
   {
@@ -363,7 +424,24 @@ void *Parser::getOperand(bool* error)
     *error = true;
   }
 
-  return NULL;
+  while(peek() == Token::DOT || peek() == Token::LBRACK || peek() == Token::DEREF)
+  {
+    switch(next())
+    {
+      case Token::DEREF:
+      case Token::DOT:
+        expect(Token::IDENTIFIER, CHECK_ERROR);
+        expr = new Ast::MemberExpression(expr, scanner.currentVal());
+        break;
+      case Token::LBRACK:
+        Ast::Expression* index = parseExpression(CHECK_ERROR);
+        expect(Token::RBRACK, CHECK_ERROR);
+        expr = new Ast::ArrayAccess(expr, index);
+        break;
+    }
+  }
+
+  operands->push(expr);
 }
 
 void Parser::popOperator()
@@ -392,8 +470,8 @@ void Parser::popOperator()
     operands->pop();
     operands->push(new Ast::UnaryExpression(tok, top));
   }
-
 }
+
 void Parser::pushOperator(Token::Value op)
 {
   Token::Value top = operators->top();
@@ -418,9 +496,9 @@ Ast::ExpressionStatement *Parser::parseExpressionStatement(bool* error)
 
   // can have an empty statement
   if(peek() != Token::SEMICOLON) {
-    expression = parseExpression(CHECK_ERROR);
+    expression = parseExpression(CHECK_ERROR_NULL);
   }
-  expect(Token::SEMICOLON, CHECK_ERROR);
+  expect(Token::SEMICOLON, CHECK_ERROR_NULL);
   return new Ast::ExpressionStatement(
       expression
     );
@@ -436,14 +514,15 @@ Ast::Statement *Parser::parseStatement(bool *error)
 
   Token::Value tok = peek();
 
-  if(tok == Token::IDENTIFIER || tok == Token::NUMBER ||
+  if(Token::IsStorageSpecifier(tok) || Token::IsTypeSpecifier(tok) ||
+    scope->lookupIdentifier(scanner.peekVal()) == Ast::TYPEDEF)
+  {
+    statement = parseFuncOrVar(error);
+  }
+  else if(tok == Token::LPAREN || tok == Token::IDENTIFIER || tok == Token::NUMBER ||
        Token::IsUpdateOp(tok) || Token::IsUnaryOp(tok))
   {
     statement = parseExpressionStatement(error);
-  }
-  else if(Token::IsStorageSpecifier(tok) || Token::IsTypeSpecifier(tok))
-  {
-    statement = parseFuncOrVar(error);
   }
   else
   {
@@ -464,14 +543,14 @@ Ast::Statement *Parser::parseStatement(bool *error)
       case Token::IF:
         statement = parseIf(error);
         break;
-      case Token::STRUCT:
-        statement = parseStruct(error);
-        break;
       case Token::SWITCH:
         statement = parseSwitch(error);
         break;
       case Token::SEMICOLON:
         statement = parseExpressionStatement(error);
+        break;
+      case Token::TYPEDEF:
+        statement = parseTypedef(error);
         break;
       case Token::BREAK:
         statement = new Ast::BreakStatement();
@@ -496,44 +575,56 @@ Ast::Statement *Parser::parseStatement(bool *error)
   return statement;
 }
 
-/**
-*
-*/
-Ast::Statement *Parser::parseFunctionDecl(unsigned short type, bool* error)
+Ast::Statement *Parser::parseFunctionDecl(Ast::Type* type, bool* error)
 {
-  string name = scanner->currentVal();
-  Ast::FunctionPrototype *proto = global->lookupFunc(name);
-  Ast::List<Ast::Argument *> *arguments = proto ? proto->arguments : NULL;
+  string name = scanner.currentVal();
+  Ast::FunctionPrototype *proto = NULL;
+  Ast::ArgumentList* arguments = NULL;
   Ast::BlockStatement *body = NULL;
-  Ast::Type *returnType = proto ? proto->returnType : new Ast::Type(type);
 
-  expect(Token::LPAREN, CHECK_ERROR);
-  arguments = parseArgumentList(arguments, CHECK_ERROR);
-  expect(Token::RPAREN, CHECK_ERROR);
+  expect(Token::LPAREN, CHECK_ERROR_NULL);
+  arguments = parseArgumentList(CHECK_ERROR_NULL);
+  expect(Token::RPAREN, CHECK_ERROR_NULL);
 
-  if(!proto)
+
+  proto = new Ast::FunctionPrototype(
+      type,
+      name,
+      arguments
+    );
+
+  Ast::Node* node;
+  Ast::NodeType nodeType = global->lookupIdentifier(name, node);
+
+  if(nodeType == Ast::FUNCTION_PROTOTYPE)
   {
-    proto = new Ast::FunctionPrototype(
-        returnType,
-        name,
-        arguments
-      );
-    global->declareFunc(name, proto);
+    if(!proto->matches((Ast::FunctionPrototype*)node))
+    {
+      cerr << "type mismatch error\n";
+    }
+  }
+  else if(nodeType == Ast::NONE)
+  {
+    global->declareIdentifier(name, proto);
+  }
+  else
+  {
+    cerr << name << " has already been defined as another type";
   }
 
   // check if it's a prototype or definition.
   if(peek() == Token::LBRACE)
   {
     openScope();
-
-    // we must define each of the arguments in the current
-    // scope
-    for(Ast::List<Ast::Argument *>::iterator it = arguments->begin(); it != arguments->end(); ++it)
+    // We must define each of the arguments in the current
+    // scope so they are available when parsing the block
+    // statement.
+    for(Ast::ArgumentList::iterator it = arguments->begin(); it != arguments->end(); ++it)
     {
-      scope->declareVar((*it)->name, (*it)->type);
+      scope->declareIdentifier((*it)->name, (*it));
     }
 
-    body = parseBlock(false, CHECK_ERROR);
+    body = parseBlock(false, CHECK_ERROR_NULL);
 
     return new Ast::FunctionDeclaration(
       proto,
@@ -541,85 +632,53 @@ Ast::Statement *Parser::parseFunctionDecl(unsigned short type, bool* error)
     );
   }
   else {
-    expect(Token::SEMICOLON, CHECK_ERROR);
+    expect(Token::SEMICOLON, CHECK_ERROR_NULL);
     return proto;
   }
-
 }
 
-Ast::Argument *Parser::parseArgument(Ast::Argument *argument, bool *error)
+Ast::Argument *Parser::parseArgument(bool *error)
 {
-  unsigned short type = parseType(CHECK_ERROR);
-  string name = "";
+  Ast::Type* type = parseType(true, CHECK_ERROR_NULL);
+
+  string name;
 
   if(peek() == Token::IDENTIFIER)
   {
-    expect(Token::IDENTIFIER, CHECK_ERROR);
-    name = scanner->currentVal();
+    next();
+    name = scanner.currentVal();
   }
-
-  if(argument)
+  if(peek() == Token::LBRACK)
   {
-    if(argument->type->type != type)
-    {
-      cout << "type mismatch\n";
-      *error = true;
-    }
-    else
-    {
-      argument->name = name;
-    }
+    type = parseArraySize(type, CHECK_ERROR_NULL);
   }
-  else
-  {
-    argument = new Ast::Argument(
-        new Ast::Type(type),
-        name
+  return new Ast::Argument(
+        name,
+        type
       );
-  }
-
-  return argument;
 }
 
-Ast::List<Ast::Argument *> *Parser::parseArgumentList(Ast::List<Ast::Argument *> *arguments, bool* error)
+Ast::ArgumentList *Parser::parseArgumentList(bool* error)
 {
-  if(!arguments) return parseArgumentList(CHECK_ERROR);
-  Ast::List<Ast::Argument *>::iterator it = arguments->begin();
+  Ast::ArgumentList* arguments = new Ast::ArgumentList(false);
 
   if(peek() != Token::RPAREN)
   {
-    if(it <= arguments->end()) {
-      parseArgument(*it++, CHECK_ERROR);
-
-      while(peek() == Token::COMMA && it < arguments->end())
-      {
-        expect(Token::COMMA, CHECK_ERROR);
-        parseArgument(*it, CHECK_ERROR);
-        it++;
-      }
-    }
-    else {
-      *error = true;
-      cout << "type mismatch\n";
-    }
-  }
-
-  return arguments;
-}
-
-Ast::List<Ast::Argument *> *Parser::parseArgumentList(bool* error)
-{
-  Ast::List<Ast::Argument *> *arguments = new Ast::List<Ast::Argument *>();
-
-  if(peek() != Token::RPAREN)
-  {
-    Ast::Argument *argument = parseArgument(NULL, CHECK_ERROR);
+    Ast::Argument *argument = parseArgument(CHECK_ERROR_NULL);
     arguments->push_back(argument);
 
     while(peek() == Token::COMMA)
     {
-      expect(Token::COMMA, CHECK_ERROR);
-      argument = parseArgument(NULL, CHECK_ERROR);
+      expect(Token::COMMA, CHECK_ERROR_NULL);
+      if(peek() == Token::DOT) {
+        expect(Token::DOT, CHECK_ERROR_NULL);
+        expect(Token::DOT, CHECK_ERROR_NULL);
+        expect(Token::DOT, CHECK_ERROR_NULL);
+
+        arguments->variable = true;
+        break;
+      }
+      argument = parseArgument(CHECK_ERROR_NULL);
       arguments->push_back(argument);
     }
   }
@@ -631,26 +690,31 @@ Ast::List<Ast::Argument *> *Parser::parseArgumentList(bool* error)
 Ast::FunctionInvocation *Parser::parseFunctionInvocation(bool *error)
 {
   // name has already been scanned at this stage
-  string name = scanner->currentVal();
+  string name = scanner.currentVal();
   Ast::List<Ast::Expression *> *arguments = new Ast::List<Ast::Expression *>();
   Ast::Expression *argument = NULL;
 
-  expect(Token::LPAREN, CHECK_ERROR);
+  expect(Token::LPAREN, CHECK_ERROR_NULL);
 
   // we have at least one argument
-  if(peek() != Token::RPAREN) {
-
-    argument = parseExpression(4, CHECK_ERROR);
+  if(peek() != Token::RPAREN)
+  {
+    argument = parseExpression(4, CHECK_ERROR_NULL);
     arguments->push_back(argument);
 
-    while(peek() == Token::COMMA) {
-      expect(Token::COMMA, CHECK_ERROR);
-      argument = parseExpression(4, CHECK_ERROR);
+    while(peek() == Token::COMMA)
+    {
+      expect(Token::COMMA, CHECK_ERROR_NULL);
+      argument = parseExpression(4, CHECK_ERROR_NULL);
       arguments->push_back(argument);
     }
   }
-
-  Ast::FunctionPrototype *function = global->lookupFunc(name);
+  Ast::Node* node;
+  Ast::FunctionPrototype *function = NULL;
+  if(global->lookupIdentifier(name, node) == Ast::FUNCTION_PROTOTYPE)
+  {
+    function = (Ast::FunctionPrototype*)node;
+  }
 
   if(!function)
   {
@@ -663,72 +727,161 @@ Ast::FunctionInvocation *Parser::parseFunctionInvocation(bool *error)
       cout << "wrong number of arguments\n";
     }
   }
-
-
-  expect(Token::RPAREN, CHECK_ERROR);
+  expect(Token::RPAREN, CHECK_ERROR_NULL);
 
   return new Ast::FunctionInvocation(
       function,
       arguments
     );
 };
-
-Ast::Declaration *Parser::parseVariableDeclList(unsigned short type, bool *error)
+Ast::Declaration *Parser::parseVariableDeclList(Ast::Type* type, Ast::Type* pointerType, bool *error)
 {
   Ast::List<Ast::Declarator *> *declarations = new Ast::List<Ast::Declarator *>();
-  Ast::Declarator *declaration = parseVariableDecl(true, type, CHECK_ERROR);
+  Ast::Declarator *declaration = parseVariableDecl(pointerType, true, CHECK_ERROR_NULL);
   // always has at least one variable declared
   declarations->push_back(declaration);
 
-
   while(peek() == Token::COMMA)
   {
-    expect(Token::COMMA, CHECK_ERROR);
-    declaration = parseVariableDecl(false, type, CHECK_ERROR);
+    expect(Token::COMMA, CHECK_ERROR_NULL);
+    declaration = parseVariableDecl(type, false, CHECK_ERROR_NULL);
     declarations->push_back(declaration);
   }
 
-  expect(Token::SEMICOLON, CHECK_ERROR);
+  expect(Token::SEMICOLON, CHECK_ERROR_NULL);
 
   return new Ast::Declaration(
-      new Ast::Type(type),
       declarations
     );
 }
 
-Ast::Declarator *Parser::parseVariableDecl(bool hasName, short unsigned type, bool* error)
+/**
+ * Parse a variable declaration. The type has already been parsed
+ * by "parseFuncOrVar" so we just need to get the name, check whether
+ * it's a pointer and assign an initial value if one exists.
+ * @param  type  The type information that has already been parsed.
+ * @param  hasName Whether the name token has been consumed or not.
+ * @param  error Whether an error occured.
+ * @return       A Declarator Ast Object.
+ */
+Ast::Declarator *Parser::parseVariableDecl(Ast::Type *type, bool hasName, bool* error)
 {
-  string name;
-  Ast::Expression *init = NULL;
-
-  if(!hasName) {
-    expect(Token::IDENTIFIER, CHECK_ERROR);
-  }
-
-  name = scanner->currentVal();
-
-  scope->declareVar(name, new Ast::Type(type));
+  Ast::Expression* init = NULL;
+  Ast::Variable* variable = parseVariableDef(type, hasName, CHECK_ERROR_NULL);
 
   if(peek() == Token::ASSIGN) {
-    expect(Token::ASSIGN, CHECK_ERROR);
-    init = parseExpression(4, CHECK_ERROR);
+    expect(Token::ASSIGN, CHECK_ERROR_NULL);
+    init = parseExpression(4, CHECK_ERROR_NULL);
   }
   return new Ast::Declarator(
-      name,
+      variable,
       init
     );
+}
+
+Ast::List<Ast::Variable*>* Parser::parseStructDeclList(bool* error)
+{
+  Ast::List<Ast::Variable*>* declList = new Ast::List<Ast::Variable*>;
+  Ast::Type* type = parseType(false, CHECK_ERROR_NULL);
+  Ast::Variable* variable = parseVariableDef(type, false, CHECK_ERROR_NULL);
+  declList->push_back(variable);
+
+  while(peek() == Token::COMMA)
+  {
+    expect(Token::COMMA, CHECK_ERROR_NULL);
+    variable = parseVariableDef(type, false, CHECK_ERROR_NULL);
+    declList->push_back(variable);
+  }
+
+  expect(Token::SEMICOLON, CHECK_ERROR_NULL);
+
+  return declList;
+}
+
+Ast::Variable* Parser::parseVariableDef(Ast::Type* type, bool hasName, bool* error)
+{
+  if(!hasName)
+  {
+    // If we already have the name then we can't check
+    // whether it's a pointer or not.
+    while(checkPointer())
+    {
+      type = new Ast::Pointer(type);
+    }
+    expect(Token::IDENTIFIER, CHECK_ERROR_NULL);
+  }
+  string name = scanner.currentVal();
+
+  if(peek() == Token::LBRACK)
+  {
+    type = parseArraySize(type, CHECK_ERROR_NULL);
+  }
+
+  Ast::Variable* var = new Ast::Variable(name, type);
+  if(!scope->declareIdentifier(name, var)) {
+    *error = true;
+    return NULL;
+  }
+
+  return var;
+}
+
+Ast::Type* Parser::parseArraySize(Ast::Type* type, bool* error)
+{
+  expect(Token::LBRACK, CHECK_ERROR_NULL);
+  // the size is optional in most cases
+  // TODO: handle cases where it's required
+  Ast::Expression* size = peek() == Token::RBRACK ? NULL : parseExpression(CHECK_ERROR_NULL);
+  expect(Token::RBRACK, CHECK_ERROR_NULL);
+
+  if(peek() == Token::LBRACK)
+  {
+    type = parseArraySize(type, CHECK_ERROR_NULL);
+  }
+
+  return new Ast::Array(type, size);
+}
+
+inline bool Parser::checkPointer()
+{
+  return peek() == Token::MUL && (next(), true);
+}
+
+Ast::Typedef *Parser::parseTypedef(bool* error)
+{
+  Ast::Type* type;
+  string name;
+  Ast::Typedef* def;
+
+  expect(Token::TYPEDEF, CHECK_ERROR_NULL);
+
+  type = parseType(true, CHECK_ERROR_NULL);
+
+  expect(Token::IDENTIFIER, CHECK_ERROR_NULL);
+  name = scanner.currentVal();
+  expect(Token::SEMICOLON, CHECK_ERROR_NULL);
+
+  def = new Ast::Typedef(type, name);
+
+  if(!global->declareIdentifier(name, def))
+  {
+    *error = true;
+    return NULL;
+  }
+
+  return def;
 }
 
 Ast::ReturnStatement *Parser::parseReturn(bool* error)
 {
   // return keyword
-  expect(Token::RETURN, CHECK_ERROR);
+  expect(Token::RETURN, CHECK_ERROR_NULL);
 
   // followed by expression
-  Ast::Expression *expression = parseExpression(CHECK_ERROR);
+  Ast::Expression *expression = parseExpression(CHECK_ERROR_NULL);
 
   // followed by semicolon
-  expect(Token::SEMICOLON, CHECK_ERROR);
+  expect(Token::SEMICOLON, CHECK_ERROR_NULL);
 
   return new Ast::ReturnStatement(
       expression
@@ -741,18 +894,18 @@ Ast::IfStatement *Parser::parseIf(bool* error)
   Ast::Statement *body = NULL;
   Ast::Statement *elseBody = NULL;
 
-  expect(Token::IF, CHECK_ERROR);
-  expect(Token::LPAREN, CHECK_ERROR);
+  expect(Token::IF, CHECK_ERROR_NULL);
+  expect(Token::LPAREN, CHECK_ERROR_NULL);
 
-  condition = parseExpression(CHECK_ERROR);
+  condition = parseExpression(CHECK_ERROR_NULL);
 
-  expect(Token::RPAREN, CHECK_ERROR);
+  expect(Token::RPAREN, CHECK_ERROR_NULL);
 
-  body = parseStatement(CHECK_ERROR);
+  body = parseStatement(CHECK_ERROR_NULL);
 
   if(peek() == Token::ELSE) {
-    expect(Token::ELSE, CHECK_ERROR);
-    elseBody = parseStatement(CHECK_ERROR);
+    expect(Token::ELSE, CHECK_ERROR_NULL);
+    elseBody = parseStatement(CHECK_ERROR_NULL);
   }
 
   return new Ast::IfStatement(
@@ -766,19 +919,19 @@ Ast::SwitchStatement *Parser::parseSwitch(bool* error)
 {
   Ast::Expression *variable = NULL;
 
-  expect(Token::SWITCH, CHECK_ERROR);
+  expect(Token::SWITCH, CHECK_ERROR_NULL);
 
-  expect(Token::LPAREN, CHECK_ERROR);
+  expect(Token::LPAREN, CHECK_ERROR_NULL);
 
-  variable = parseExpression(CHECK_ERROR);
+  variable = parseExpression(CHECK_ERROR_NULL);
 
-  expect(Token::RPAREN, CHECK_ERROR);
+  expect(Token::RPAREN, CHECK_ERROR_NULL);
 
-  expect(Token::LBRACE, CHECK_ERROR);
+  expect(Token::LBRACE, CHECK_ERROR_NULL);
 
   // TODO: parse the body of the switch statement
 
-  expect(Token::RBRACE, CHECK_ERROR);
+  expect(Token::RBRACE, CHECK_ERROR_NULL);
 
   return new Ast::SwitchStatement(
       variable
@@ -793,27 +946,27 @@ Ast::ForStatement *Parser::parseFor(bool* error)
   Ast::Expression *loop = NULL;
   Ast::Statement *body = NULL;
 
-  expect(Token::FOR, CHECK_ERROR);
-  expect(Token::LPAREN, CHECK_ERROR);
+  expect(Token::FOR, CHECK_ERROR_NULL);
+  expect(Token::LPAREN, CHECK_ERROR_NULL);
 
   // expressions are optional
   if(peek() != Token::SEMICOLON) {
     // TODO: allow for declatations in init
-    init = parseExpression(CHECK_ERROR);
+    init = parseExpression(CHECK_ERROR_NULL);
   }
-  expect(Token::SEMICOLON, CHECK_ERROR);
+  expect(Token::SEMICOLON, CHECK_ERROR_NULL);
 
   // expressions are optional
   if(peek() != Token::SEMICOLON) {
-    condition = parseExpression(CHECK_ERROR);
+    condition = parseExpression(CHECK_ERROR_NULL);
   }
-  expect(Token::SEMICOLON, CHECK_ERROR);
+  expect(Token::SEMICOLON, CHECK_ERROR_NULL);
 
   // expressions are optional
   if(peek() != Token::RPAREN) {
-    loop = parseExpression(CHECK_ERROR);
+    loop = parseExpression(CHECK_ERROR_NULL);
   }
-  expect(Token::RPAREN, CHECK_ERROR);
+  expect(Token::RPAREN, CHECK_ERROR_NULL);
 
   // open new "wrapper" scope to contain
   // variables defined in the intialisation
@@ -822,7 +975,7 @@ Ast::ForStatement *Parser::parseFor(bool* error)
 
   // parse any statement including a block
   // statement
-  body = parseStatement(CHECK_ERROR);
+  body = parseStatement(CHECK_ERROR_NULL);
 
   // close the "wrapper" scope
   closeScope();
@@ -840,14 +993,14 @@ Ast::WhileStatement *Parser::parseWhile(bool* error)
   Ast::Expression *condition = NULL;
   Ast::Statement *body = NULL;
 
-  expect(Token::WHILE, CHECK_ERROR);
-  expect(Token::LPAREN, CHECK_ERROR);
+  expect(Token::WHILE, CHECK_ERROR_NULL);
+  expect(Token::LPAREN, CHECK_ERROR_NULL);
 
-  condition = parseExpression(CHECK_ERROR);
+  condition = parseExpression(CHECK_ERROR_NULL);
 
-  expect(Token::RPAREN, CHECK_ERROR);
+  expect(Token::RPAREN, CHECK_ERROR_NULL);
 
-  body = parseStatement(CHECK_ERROR);
+  body = parseStatement(CHECK_ERROR_NULL);
 
   return new Ast::WhileStatement(
       condition,
@@ -855,43 +1008,60 @@ Ast::WhileStatement *Parser::parseWhile(bool* error)
     );
 }
 
-Ast::StructStatement *Parser::parseStruct(bool* error)
+Ast::Struct* Parser::parseStruct(bool* error)
 {
-  Ast::List<Ast::Declaration *> *members = new Ast::List<Ast::Declaration *>();
-  Ast::Declaration *decl;
+  Ast::List<Ast::Variable *> *members;
+  Ast::Struct* structDecl = NULL;
   string name;
 
-  expect(Token::STRUCT, CHECK_ERROR);
+  expect(Token::STRUCT, CHECK_ERROR_NULL);
 
-  expect(Token::IDENTIFIER, CHECK_ERROR);
-  name = scanner->currentVal();
+  if(peek() == Token::IDENTIFIER) {
+    expect(Token::IDENTIFIER, CHECK_ERROR_NULL);
+    name = scanner.currentVal();
+
+    Ast::Node* node;
+    Ast::NodeType type = scope->lookupIdentifier(name, node);
+    if(type == Ast::STRUCT)
+    {
+      structDecl = (Ast::Struct*)node;
+      if(peek() == Token::LBRACE)
+      {
+        cerr << "redefinition of struct\n";
+        *error = true;
+        return NULL;
+      }
+    }
+    else if(type != Ast::NONE)
+    {
+      cerr << "error defining struct: identifier already used for another type\n";
+      *error = true;
+      return NULL;
+    }
+  }
 
   // definition of struct
   if(peek() == Token::LBRACE)
   {
-    expect(Token::LBRACE, CHECK_ERROR);
+    openScope();
+    expect(Token::LBRACE, CHECK_ERROR_NULL);
+    members = new Ast::List<Ast::Variable *>();
 
     while(peek() != Token::RBRACE)
     {
-      decl = (Ast::Declaration *)parseFuncOrVar(CHECK_ERROR);
-      members->push_back(decl);
+      members = parseStructDeclList(CHECK_ERROR_NULL);
+      //members->push_back(decl);
     }
 
-    expect(Token::RBRACE, CHECK_ERROR);
+    expect(Token::RBRACE, CHECK_ERROR_NULL);
+    closeScope();
+
+    structDecl = new Ast::Struct(name, members);
+    scope->declareIdentifier(name, structDecl);
   }
 
-  // declaring instance of struct
-  if(peek() == Token::IDENTIFIER)
-  {
-    expect(Token::IDENTIFIER, CHECK_ERROR);
-  }
 
-  expect(Token::SEMICOLON, CHECK_ERROR);
-
-  return new Ast::StructStatement(
-      name,
-      members
-    );
+  return structDecl;
 }
 
 Ast::List<Ast::Expression *> *Parser::parseArrayExpression(bool *error)
@@ -899,16 +1069,16 @@ Ast::List<Ast::Expression *> *Parser::parseArrayExpression(bool *error)
   Ast::List<Ast::Expression *> *elements = new Ast::List<Ast::Expression *>();
   Ast::Expression *expr;
 
-  expect(Token::LBRACE, CHECK_ERROR);
+  expect(Token::LBRACE, CHECK_ERROR_NULL);
 
   while(peek() != Token::RBRACE)
   {
-    expr = parseExpression(4, CHECK_ERROR);
+    expr = parseExpression(4, CHECK_ERROR_NULL);
 
     elements->push_back(expr);
   }
 
-  expect(Token::RBRACE, CHECK_ERROR);
+  expect(Token::RBRACE, CHECK_ERROR_NULL);
 
   return elements;
 }
@@ -919,7 +1089,7 @@ Ast::BlockStatement *Parser::parseBlock(bool* error)
   return parseBlock(true, error);
 }
 
-// overloaded to allow defining whether or not
+// Overloaded to allow defining whether or not
 // a new scope should be opened. e.g the scope is
 // opened early in a function declaration.
 Ast::BlockStatement *Parser::parseBlock(bool openNewScope, bool* error)
@@ -932,11 +1102,11 @@ Ast::BlockStatement *Parser::parseBlock(bool openNewScope, bool* error)
     openScope();
   }
 
-  expect(Token::LBRACE, CHECK_ERROR);
+  expect(Token::LBRACE, CHECK_ERROR_NULL);
 
   while(peek() != Token::RBRACE && peek() != Token::EOS)
   {
-    statement = parseStatement(CHECK_ERROR);
+    statement = parseStatement(CHECK_ERROR_NULL);
     statements->push_back(statement);
   }
 

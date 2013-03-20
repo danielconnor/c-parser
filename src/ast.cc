@@ -1,7 +1,7 @@
 #include "ast.h"
 
 
-const char *Ast::Type::types[] = {
+const char* const Ast::FundamentalType::types[] = {
   "short",
   "long",
   "long",
@@ -11,6 +11,12 @@ const char *Ast::Type::types[] = {
   "float",
   "int",
   "char"
+};
+
+const char* const Ast::NodeTypeName[] = {
+  #define P_NAME(E, S) S,
+  STATEMENT_TYPES(P_NAME)
+  #undef P_NAME
 };
 
 uint32_t Ast::Printable::ref_count = 0;

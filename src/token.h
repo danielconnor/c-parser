@@ -77,23 +77,19 @@ using namespace std;
   /* keywords */                                                        \
   K(BREAK, "break", 0)                                                  \
   K(CASE, "case", 0)                                                    \
-  K(CONST, "const", 0)                                                  \
   K(CONTINUE, "continue", 0)                                            \
   K(DEFAULT, "default", 0)                                              \
   K(DO, "do", 0)                                                        \
   K(ELSE, "else", 0)                                                    \
-  K(ENUM, "enum", 0)                                                    \
   K(FOR, "for", 0)                                                      \
   K(GOTO, "goto", 0)                                                    \
   K(IF, "if", 0)                                                        \
   K(RETURN, "return", 0)                                                \
   K(SIZEOF, "sizeof", 0)                                                \
-  K(STRUCT, "struct", 0)                                                \
   K(SWITCH, "switch", 0)                                                \
   K(TYPEDEF, "typedef", 0)                                              \
-  K(UNION, "union", 0)                                                  \
-  K(UNSIGNED, "unsigned", 0)                                            \
   K(WHILE, "while", 0)                                                  \
+  K(MORE, "...", 0)                                                     \
                                                                         \
   /* Type specifiers */                                                 \
   K(CHAR, "char", 0)                                                    \
@@ -102,14 +98,20 @@ using namespace std;
   K(INT, "int", 0)                                                      \
   K(LONG, "long", 0)                                                    \
   K(SHORT, "short", 0)                                                  \
+  K(UNSIGNED, "unsigned", 0)                                            \
   K(SIGNED, "signed", 0)                                                \
+  K(STRUCT, "struct", 0)                                                \
+  K(UNION, "union", 0)                                                  \
+  K(ENUM, "enum", 0)                                                    \
   K(VOID, "void", 0)                                                    \
                                                                         \
   /* Storage class specifiers */                                        \
   K(AUTO, "auto", 0)                                                    \
+  K(CONST, "const", 0)                                                  \
   K(EXTERN, "extern", 0)                                                \
   K(REGISTER, "register", 0)                                            \
   K(STATIC, "static", 0)                                                \
+  K(INLINE, "inline", 0)                                                \
   K(VOLATILE, "volatile", 0)                                            \
                                                                         \
   T(COMMENT, NULL, 0)                                                   \
@@ -117,7 +119,13 @@ using namespace std;
   T(NUMBER, NULL, 0)                                                    \
   T(STRING, NULL, 0)                                                    \
   T(CHARACTER, NULL, 0)                                                 \
-  T(IDENTIFIER, NULL, 0)
+  T(IDENTIFIER, NULL, 0)                                                \
+                                                                        \
+  /* Non standard tokens */                                             \
+  K(_INLINE, "__inline__", 0)                                           \
+  K(_ATTRIBUTE, "__attribute__", 0)
+
+
 
 
 
@@ -193,6 +201,11 @@ public:
     return (SHL <= op) && (op <= SHR);
   }
 
+  static bool IsMemberOp(Value op)
+  {
+    return op == DOT || op == DEREF;
+  }
+
   static bool IsStorageSpecifier(Value op)
   {
     return (AUTO <= op) && (op <= VOLATILE);
@@ -201,6 +214,11 @@ public:
   static bool IsTypeSpecifier(Value op)
   {
     return (CHAR <= op) && (op <= VOID);
+  }
+
+  static bool IsNonStandard(Value op)
+  {
+    return (_INLINE <= op) && (op <= _ATTRIBUTE);
   }
 
   // Returns a string corresponding to the JS token string

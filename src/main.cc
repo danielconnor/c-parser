@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include "parser.h"
 #include "optionparser.h"
+#include "colour.h"
 
 struct Arg: public option::Arg
 {
@@ -33,14 +34,14 @@ struct Arg: public option::Arg
 
 
 
-enum optionIndex { UNKNOWN, HELP, INPUT, OUTPUT };
+enum optionIndex { UNKNOWN, HELP, INPUT_FILE, OUTPUT_FILE };
 const option::Descriptor usage[] =
 {
  {UNKNOWN, 0, "", "",option::Arg::None, "USAGE: parser [options]\n\n"
                                         "Options:" },
  {HELP, 0, "", "help", option::Arg::None, "  --help  \tPrint usage and exit." },
- {INPUT, 0, "i", "input", Arg::Required, "  --input, -i  \tSpecify input file." },
- {OUTPUT, 0, "o", "output", Arg::Required, "  --output, -o  \tSpecify output file." },
+ {INPUT_FILE, 0, "i", "input", Arg::Required, "  --input, -i  \tSpecify input file." },
+ {OUTPUT_FILE, 0, "o", "output", Arg::Required, "  --output, -o  \tSpecify output file." },
  {0,0,0,0,0,0}
 };
 
@@ -63,24 +64,33 @@ int main(int argc, char* argv[])
   string input;
   string output;
 
-  if(!options[INPUT])
+  if(!options[INPUT_FILE])
   {
     option::printUsage(cout, usage);
     return 0;
   }
 
-  Parser p(options[INPUT].arg);
-  Ast::List<Ast::Statement *> ast;
+  ifstream ifs;
+  ifs.open(options[INPUT_FILE].arg);
 
-  p.parse(&ast);
-
-  if(options[OUTPUT])
+  if(ifs.is_open())
   {
-    ast.printVar(options[OUTPUT].arg, "ast");
+    Parser p(ifs);
+    Ast::List<Ast::Statement *> ast;
+    p.parse(&ast);
+
+    if(options[OUTPUT_FILE])
+    {
+      ast.printVar(ofstream(options[OUTPUT_FILE].arg), "ast");
+    }
+    else
+    {
+      ast.printVar(cout, "ast");
+    }
   }
   else
   {
-    ast.printVar(cout, "ast");
+    cout << "file not found: " << options[INPUT_FILE].arg << "\n";
   }
 
   return 0;

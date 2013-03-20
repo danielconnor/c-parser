@@ -7,25 +7,29 @@
 #include <iostream>
 #include <fstream>
 #include <ostream>
-
 #include <stdint.h>
 
-#include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Analysis/Verifier.h"
-
 #include "token.h"
+#include "statements.h"
 
 using namespace std;
-
-static llvm::Module *TheModule;
-static llvm::IRBuilder<> Builder(llvm::getGlobalContext());
 
 class Ast {
 
 public:
+  static const char* const NodeTypeName[];
+  #define P_ENUM(E, S) E,
+  enum NodeType {
+    STATEMENT_TYPES(P_ENUM)
+    NUM_STATEMENTS
+  };
+  #undef P_ENUM
+
+  class Node;
+  class Expression;
+  class Statement;
+  class Variable;
+  class Type;
 
   /**
   * Super class for all ast types to allow them to
@@ -40,12 +44,10 @@ public:
     Printable()
     {
       ref_count++;
-      cout << "printable: " << ref_count << "\n";
     }
     virtual ~Printable()
     {
       ref_count--;
-      cout << "printable: " << ref_count << "\n";
     }
 
     void indent(ostream &out, int indentation)
@@ -123,8 +125,14 @@ public:
       printMember(out, "typeName", getTypeString(), indentation);
     }
 
-    // get's the type's name
-    virtual string getTypeString() { return ""; }
+    string getTypeString()
+    {
+      return NodeTypeName[getType()];
+    }
+    virtual inline NodeType getType() const
+    {
+      return NONE;
+    }
 
     void print(const char *filename)
     {
@@ -221,24 +229,29 @@ public:
     }
   };
 
-
-  class Type : public Printable {
-
+  class Type : public Printable
+  {
   public:
-    unsigned size;
-    short unsigned type;
-    const static char *types[];
+    virtual uint64_t getSize() = 0;
+    virtual uint8_t getAlign() = 0;
+    virtual bool matches(Type*) = 0;
+  };
 
-    Type(short unsigned type, unsigned int size = 1)
-    {
-      this->type = type;
-      this->size = size;
-    }
+  typedef uint16_t Typemask;
+
+  class FundamentalType : public Type
+  {
+  public:
+    Typemask type;
+    const static char* const types[];
+
+    FundamentalType(Typemask type) : type(type)
+    {}
 
     virtual void printContents(ostream &out, int i)
     {
       string name = "";
-      unsigned short mask = 1;
+      Typemask mask = 1;
 
       for(int s = 0; s < 10; s++)
       {
@@ -252,15 +265,161 @@ public:
         }
         mask <<= 1;
       }
-
       printMember(out, "name", name, i);
     }
 
-    virtual string getTypeString()
+    virtual uint64_t getSize()
     {
-      return "Type";
+      return 0;
+    }
+    virtual uint8_t getAlign()
+    {
+      return 0;
+    }
+    virtual inline NodeType getType() const
+    {
+      return FUNDAMENTAL_TYPE;
+    }
+    virtual bool matches(Type* other)
+    {
+      return getType() == other->getType() && type == ((FundamentalType*)other)->type;
+    }
+  };
+
+  class ComplexType : public Type {
+  public:
+    List<Variable*>* members;
+
+    ComplexType(List<Variable*>* members) : members(members)
+    {}
+
+    virtual ~ComplexType()
+    {
+      delete members;
+    }
+    virtual void printContents(ostream &out, int i)
+    {
+      printMember(out, "members", members, i);
+    }
+  };
+
+  class AnonymousComplexType : public ComplexType
+  {};
+
+  class NamedComplexType : public ComplexType {
+  public:
+    string name;
+
+    NamedComplexType(string name, List<Variable *>* members) : name(name), ComplexType(members)
+    {}
+
+    virtual void printContents(ostream &out, int i)
+    {
+      printMember(out, "name", name, i);
+      ComplexType::printContents(out, i);
+    }
+  };
+
+  class Struct : public NamedComplexType
+  {
+  public:
+  Struct(string name, List<Variable *>* members) : NamedComplexType(name, members)
+  {}
+
+    virtual uint64_t getSize()
+    {
+      //TODO
+      return 0;
+    }
+    virtual uint8_t getAlign()
+    {
+      //TODO
+      return 0;
+    }
+    virtual inline NodeType getType() const
+    {
+      return STRUCT;
+    }
+    virtual bool matches(Type* other)
+    {
+      return true;
+    }
+  };
+
+  class Union : public NamedComplexType
+  {
+  public:
+    virtual uint64_t getSize()
+    {
+      //TODO
+      return 0;
+    }
+    virtual uint8_t getAlign()
+    {
+      //TODO
+      return 0;
+    }
+    virtual inline NodeType getType() const
+    {
+      return UNION;
+    }
+    virtual bool matches(Type* other)
+    {
+      return true;
+    }
+  };
+
+  class Pointer : public Type
+  {
+  public:
+    Type* type;
+
+    Pointer(Type* type): type(type)
+    {}
+
+    virtual void printContents(ostream &out, int i)
+    {
+      printMember(out, "type", type, i);
     }
 
+    virtual inline NodeType getType() const
+    {
+      return POINTER;
+    }
+
+    virtual uint64_t getSize()
+    {
+      //TODO
+      return 32;
+    }
+    virtual uint8_t getAlign()
+    {
+      //TODO
+      return 32;
+    }
+
+    virtual bool matches(Type* other)
+    {
+      return (POINTER == other->getType() ||
+              ARRAY == other->getType()) && type->matches(((Pointer*)other)->type);
+    }
+  };
+
+  class Array : public Pointer
+  {
+  public:
+    Expression* size;
+    Array(Type* type, Expression* size) : Pointer(type), size(size)
+    {}
+    virtual inline NodeType getType() const
+    {
+      return ARRAY;
+    }
+    virtual void printContents(ostream &out, int i)
+    {
+      Pointer::printContents(out, i);
+      printMember(out, "size", size, i);
+    }
   };
 
   class Position : public Printable
@@ -275,18 +434,15 @@ public:
     }
   };
 
+
   class Node : public Printable
   {
-    virtual llvm::Value *Codegen() = 0;
-
   //   Position start;
   //   Position end;
 
   // public:
   //   Node(Position start, Position end)
-  //   {
-  //     start
-  //   }
+  //   {}
 
   //   virtual void printContents(ostream &out, int i) {
   //     printMember(out, "start", start, i);
@@ -308,9 +464,9 @@ public:
       this->raw = raw;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "Literal";
+      return LITERAL;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -330,9 +486,9 @@ public:
       this->value = value;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "NumberLiteral";
+      return NUMBER_LITERAL;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -345,7 +501,6 @@ public:
 
 
   class Assignable : public Expression {};
-
 
   class Variable : public Assignable
   {
@@ -368,14 +523,14 @@ public:
       // delete type;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "VariableExpression";
+      return VARIABLE;
     }
 
     virtual void printContents(ostream &out, int i)
     {
-      printMember(out, "raw", name, i);
+      printMember(out, "name", name, i);
       printMember(out, "type", type, i);
     }
   };
@@ -413,9 +568,9 @@ public:
       delete right;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "AssignExpression";
+      return ASSIGN_EXPRESSION;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -441,9 +596,9 @@ public:
       delete operand;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "UnaryExpression";
+      return UNARY_EXPRESSION;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -463,9 +618,9 @@ public:
       this->prefix = prefix;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "UpdateExpression";
+      return UPDATE_EXPRESSION;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -495,9 +650,9 @@ public:
       delete right;
     }
 
-    string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "BinaryExpression";
+      return BINARY_EXPRESSION;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -505,35 +660,6 @@ public:
       OpExpression::printContents(out, i);
       printMember(out, "left", left, i);
       printMember(out, "right", right, i);
-    }
-  };
-
-  class Argument : public Node
-  {
-  public:
-    Type *type;
-    string name;
-
-    Argument(Type *type, string name)
-    {
-      this->type = type;
-      this->name = name;
-    }
-
-    virtual ~Argument()
-    {
-      delete type;
-    }
-
-    string getTypeString()
-    {
-      return "Argument";
-    }
-
-    void printContents(ostream &out, int i)
-    {
-      printMember(out, "name", name, i);
-      printMember(out, "type", type, i);
     }
   };
 
@@ -566,6 +692,26 @@ public:
     }
   };
 
+  class Typedef : public Statement
+  {
+  public:
+    string name;
+    Type *type;
+
+    Typedef(Type* type, string name) : type(type), name(name) {}
+
+    virtual void printContents(ostream &out, int i)
+    {
+      printMember(out, "type", type, i);
+      printMember(out, "name", name, i);
+    }
+
+    virtual inline NodeType getType() const
+    {
+      return TYPEDEF;
+    }
+  };
+
   class LoopStatement : public CtrlStatement {
   public:
     LoopStatement(Expression *condition, Statement *body): CtrlStatement(condition, body)
@@ -590,9 +736,9 @@ public:
       delete loop;
     }
 
-    string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "ForStatement";
+      return FOR_STATEMENT;
     }
 
     void printContents(ostream &out, int i)
@@ -606,20 +752,21 @@ public:
   // no difference in these other than the way
   // they're printed.
   class DoWhileStatement : public LoopStatement {
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "DoWhileStatement";
+      return DO_WHILE_STATEMENT;
     }
   };
+
   class WhileStatement : public LoopStatement
   {
   public:
     WhileStatement(Expression *condition, Statement *body) :
       LoopStatement(condition, body) {}
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "WhileStatement";
+      return WHILE_STATEMENT;
     }
   };
 
@@ -637,9 +784,9 @@ public:
       delete elseBody;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "IfStatement";
+      return IF_STATEMENT;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -652,57 +799,52 @@ public:
 
   class Declarator : public Statement
   {
-    string name;
-    Expression *init;
+    Variable* variable;
+    Expression* init;
 
   public:
-    Declarator(string name, Expression *init)
-    {
-      this->name = name;
-      this->init = init;
-    }
+    Declarator(Variable* variable, Expression* init) : variable(variable), init(init)
+    {}
+
     virtual ~Declarator()
     {
+      delete variable;
       delete init;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "Declarator";
+      return DECLARATOR;
     }
 
     virtual void printContents(ostream &out, int i)
     {
-      printMember(out, "name", name, i);
+      printMember(out, "variable", variable, i);
       printMember(out, "init", init, i);
     }
   };
 
   class Declaration : public Statement
   {
-    Type *type;
     List<Declarator *> *declarations;
 
   public:
-    Declaration(Type *type, List<Declarator *> *declarations)
+    Declaration(List<Declarator *> *declarations)
     {
-      this->type = type;
       this->declarations = declarations;
     }
     virtual ~Declaration()
     {
-      delete type;
       delete declarations;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "Declaration";
+      return DECLARATION;
     }
 
     virtual void printContents(ostream &out, int i)
     {
-      printMember(out, "type", type, i);
       printMember(out, "declarations", declarations, i);
     }
   };
@@ -717,12 +859,12 @@ public:
       this->statements = statements;
     }
     virtual ~BlockStatement() {
-      delete statements;
+      //delete statements;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "BlockStatement";
+      return BLOCK_STATEMENT;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -742,12 +884,12 @@ public:
     }
     virtual ~ExpressionStatement()
     {
-      delete expression;
+      //delete expression;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "ExpressionStatement";
+      return EXPRESSION_STATEMENT;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -770,9 +912,9 @@ public:
       delete expression;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "ReturnStatement";
+      return RETURN_STATEMENT;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -781,16 +923,37 @@ public:
     }
   };
 
+  class Argument : public Variable
+  {
+  public:
+    Argument(string name, Type* type) : Variable(name, type)
+    {}
+
+    virtual inline NodeType getType() const
+    {
+      return ARGUMENT;
+    }
+  };
+
+  class ArgumentList : public List<Argument *>{
+  public:
+    bool variable;
+    ArgumentList(bool variable) : variable(variable)
+    {}
+  };
+
   class FunctionPrototype : public Statement {
   public:
     Type *returnType;
     string name;
-    List<Argument *> *arguments;
+    ArgumentList* arguments;
+
+    typedef ArgumentList::iterator ArgumentIterator;
 
     FunctionPrototype(
-        Type *returnType,
+        Type* returnType,
         string name,
-        List<Argument *> *arguments
+        ArgumentList* arguments
       )
     {
       this->returnType = returnType;
@@ -803,9 +966,32 @@ public:
       delete arguments;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "FunctionPrototype";
+      return FUNCTION_PROTOTYPE;
+    }
+
+    bool matches(FunctionPrototype* proto)
+    {
+      ArgumentList* other = proto->arguments;
+
+      if(arguments->size() == other->size())
+      {
+        bool match = true;
+
+        ArgumentIterator otherArg = other->begin();
+        ArgumentIterator thisArg = arguments->begin();
+
+        while(match && otherArg != other->end() && thisArg != arguments->end())
+        {
+          match = (*otherArg)->type->matches((*thisArg)->type);
+          otherArg++;
+          thisArg++;
+        }
+        return match;
+      }
+
+      return false;
     }
 
     void printContents(ostream &out, int i)
@@ -835,9 +1021,9 @@ public:
       delete body;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "FunctionDeclaration";
+      return FUNCTION_DECLARATION;
     }
 
     void printContents(ostream &out, int i)
@@ -864,9 +1050,9 @@ public:
       delete arguments;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "FunctionInvocation";
+      return FUNCTION_INVOCATION;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -892,12 +1078,12 @@ public:
     }
     virtual ~MemberExpression()
     {
-      delete object;
+      //delete object;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "MemberExpression";
+      return MEMBER_EXPRESSION;
     }
 
     virtual void printContents(ostream &out, int i)
@@ -913,7 +1099,7 @@ public:
     Expression *index;
 
   public:
-    ArrayAccess(Expression *array, Expression *index)
+    ArrayAccess(Expression* array, Expression* index)
     {
       this->array = array;
       this->index = index;
@@ -924,60 +1110,36 @@ public:
       delete index;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "ArrayAccess";
-    }
-  };
-
-  class StructStatement : public Statement
-  {
-    string name;
-    List<Declaration *> *members;
-
-  public:
-    StructStatement(string name, List<Declaration *> *members)
-    {
-      this->name = name;
-      this->members = members;
-    }
-    virtual ~StructStatement()
-    {
-      delete members;
-    }
-
-    virtual string getTypeString()
-    {
-      return "StructStatement";
+      return ARRAY_ACCESS;
     }
 
     virtual void printContents(ostream &out, int i)
     {
-      printMember(out,"name", name, i);
-      printMember(out, "members", members, i);
+      printMember(out, "array", array, i);
+      printMember(out, "index", index, i);
     }
-
   };
+
 
   class EnumStatement : public Statement
   {
     string name;
-
   public:
     EnumStatement(string name)
     {
       this->name = name;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "EnumStatement";
+      return ENUM_STATEMENT;
     }
 
     virtual void printContents(ostream &out, int i)
     {
     }
-
   };
 
   class BreakStatement : public Statement
@@ -991,9 +1153,9 @@ public:
 
   class ContinueStatement : public Statement
   {
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "ContinueStatement";
+      return CONTINUE_STATEMENT;
     }
   };
 
@@ -1011,9 +1173,9 @@ public:
       delete variable;
     }
 
-    virtual string getTypeString()
+    virtual inline NodeType getType() const
     {
-      return "SwitchStatement";
+      return SWITCH_STATEMENT;
     }
 
     virtual void printContents(ostream &out, int i)

@@ -1,27 +1,26 @@
 #ifndef _SCANNER
 #define _SCANNER
 
-#include <fstream>
+#include <istream>
 #include <string>
 #include <iostream>
 #include <ctype.h>
 
 #include "token.h"
 #include "buffer.h"
-using namespace std;
 
 
 class Scanner {
 
 private:
-  ifstream file;
+  std::istream& file;
 
 public:
   Buffer *_current;
   Buffer *_next;
   void swapBuffers();
 
-  Scanner(const char*);
+  Scanner(istream&);
   ~Scanner();
 
   // overall offset

@@ -1,8 +1,11 @@
 #include "scanner.h"
 
-Scanner::Scanner(const char* filename)
+
+using namespace std;
+
+
+Scanner::Scanner(istream& input) : file(input)
 {
-  file.open(filename);
   lineOffset = 0;
   colOffset = 0;
   offset = 0;
@@ -170,6 +173,12 @@ Token::Value Scanner::scan()
       case ')':
         token = Token::RPAREN;
         break;
+      case '[':
+        token = Token::LBRACK;
+        break;
+      case ']':
+        token = Token::RBRACK;
+        break;
       case '{':
         token = Token::LBRACE;
         break;
@@ -260,6 +269,7 @@ void Scanner::skipWhitespace()
   GROUP('i')                                                               \
   KEYWORD(IF, "if")                                                        \
   KEYWORD(INT, "int")                                                      \
+  KEYWORD(INLINE, "inline")                                                \
   GROUP('l')                                                               \
   KEYWORD(LONG, "long")                                                    \
   GROUP('r')                                                               \
@@ -277,11 +287,15 @@ void Scanner::skipWhitespace()
   GROUP('u')                                                               \
   KEYWORD(UNION, "union")                                                  \
   KEYWORD(UNSIGNED, "unsigned")                                            \
-  KEYWORD(VOID, "void")                                                    \
   GROUP('v')                                                               \
+  KEYWORD(VOID, "void")                                                    \
   KEYWORD(VOLATILE, "volatile")                                            \
   GROUP('w')                                                               \
-  KEYWORD(WHILE, "while")
+  KEYWORD(WHILE, "while")                                                  \
+  GROUP('_')                                                               \
+  KEYWORD(_INLINE, "__inline__")                                            \
+  KEYWORD(_ATTRIBUTE, "__attribute__")
+
 
 
 Token::Value Scanner::IdentifyKeyword(char *string, int strLen)
@@ -304,7 +318,11 @@ Token::Value Scanner::IdentifyKeyword(char *string, int strLen)
           (len <= 6 || string[6] == keyword[6]) &&            \
           (len <= 7 || string[7] == keyword[7]) &&            \
           (len <= 8 || string[8] == keyword[8]) &&            \
-          (len <= 9 || string[9] == keyword[9])) {            \
+          (len <= 9 || string[9] == keyword[9]) &&            \
+          (len <= 10 || string[10] == keyword[10]) &&         \
+          (len <= 11 || string[11] == keyword[11]) &&         \
+          (len <= 12 || string[12] == keyword[12]) &&         \
+          (len <= 13 || string[13] == keyword[13])) {         \
         return Token::token;                                  \
       }                                                       \
     }
@@ -353,7 +371,7 @@ Token::Value Scanner::scanNumber()
       _next->push(current);
 
       mantissa += (current - '0') / offset;
-      offset += 10;
+      offset *= 10;
       next();
     }
 
